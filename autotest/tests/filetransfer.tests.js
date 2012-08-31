@@ -220,7 +220,9 @@ describe('FileTransfer', function() {
 
         it("should be able to upload a file", function() {
             var fail = jasmine.createSpy();
-            var uploadFail = jasmine.createSpy();
+            var uploadFail = function() {
+                expect(false).toBe(true, "Ensure " + remoteFile + " is in the white list");
+            };
 
             var remoteFile = server + "/upload";
             var localFileName = "upload.txt";
@@ -257,7 +259,6 @@ describe('FileTransfer', function() {
 
             runs(function() {
                 expect(uploadWin).toHaveBeenCalled();
-                expect(uploadFail).not.toHaveBeenCalled();
                 expect(fail).not.toHaveBeenCalled();
             });
         });
@@ -402,6 +403,55 @@ describe('FileTransfer', function() {
             });
 
         });
+        it("should be able to set custom headers", function() {
+            var remoteFile = "http://whatheaders.com";
+            var localFileName = "upload.txt";
 
+            var fileFail = function() {};
+            var uploadFail = function() {
+                expect(false).toBe(true, "Ensure " + remoteFile + " is in the white list and that Content-Length header is being set.");
+            };
+
+            var uploadWin = jasmine.createSpy().andCallFake(function(uploadResult) {
+                expect(uploadResult.bytesSent).toBeGreaterThan(0);
+                expect(uploadResult.responseCode).toBe(200);
+                expect(uploadResult.response).toBeDefined();
+                deleteEntry(localFileName);
+                var responseHtml = decodeURIComponent(uploadResult.response);
+                expect(responseHtml).toMatch(/CustomHeader1[\s\S]*CustomValue1/i);
+                expect(responseHtml).toMatch(/CustomHeader2[\s\S]*CustomValue2[\s\S]*CustomValue3/i, "Should allow array values");
+            });
+
+            var fileWin = function(fileEntry) {
+                ft = new FileTransfer();
+
+                var options = new FileUploadOptions();
+                options.fileKey = "file";
+                options.fileName = localFileName;
+                options.mimeType = "text/plain";
+
+                var params = new Object();
+                params.value1 = "test";
+                params.value2 = "param";
+                options.params = params;
+                options.headers = {
+                    "CustomHeader1": "CustomValue1",
+                    "CustomHeader2": ["CustomValue2", "CustomValue3"],
+                };
+
+                // removing options cause Android to timeout
+                ft.upload(fileEntry.fullPath, remoteFile, uploadWin, uploadFail, options);
+            };
+
+            runs(function() {
+                writeFile(localFileName, "this file should upload", fileWin, fileFail);
+            });
+
+            waitsFor(function() { return uploadWin.wasCalled; }, "uploadWin", Tests.TEST_TIMEOUT);
+
+            runs(function() {
+                expect(uploadWin).toHaveBeenCalled();
+            });
+        });
     });
 });
